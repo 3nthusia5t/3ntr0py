@@ -1,68 +1,109 @@
 import numpy as np
 from numba import cuda
 import math
-
-@cuda.jit
-def count_values(arr, counts):
-    idx = cuda.grid(1)
-    if idx < 256:
-        counts[idx] = 0
-
-    cuda.syncthreads()
-
-    for i in range(arr.shape[0]):
-        if arr[i] == idx:
-            cuda.atomic.add(counts, idx, 1)
-
-def count_values_with_cuda(arr):
-    counts = np.zeros(256, dtype=np.int32)
-    threadsperblock = 256
-    blockspergrid = (threadsperblock + len(counts) - 1) // threadsperblock
-    count_values[blockspergrid, threadsperblock](arr, counts)
-    return counts
-
-
-
 @cuda.jit
 def calculate_histogram(data, hist_out):
-    # Calculate histogram using CUDA
-    x = cuda.grid(1)
-    if x < data.size:
-        cuda.atomic.add(hist_out, data[x], 1)
+    # Initialize shared memory for local histogram
+    local_hist = cuda.shared.array(256, dtype=np.uint32)
+    tx = cuda.threadIdx.x
+
+    local_hist[tx] = 0
+    cuda.syncthreads()
+
+
+    idx = cuda.grid(1)
+    stride = cuda.gridsize(1)
+    for i in range(idx, data.shape[0], stride):
+        cuda.atomic.add(local_hist, data[i], 1)
+    cuda.syncthreads()
+
+
+    cuda.atomic.add(hist_out, tx, local_hist[tx])
+
 
 @cuda.jit
 def calculate_entropy(hist, total_pixels, entropy_out):
-    # Calculate entropy using CUDA
-    x = cuda.grid(1)
-    if x < hist.size:
-        prob = hist[x] / total_pixels
+    idx = cuda.grid(1)
+    stride = cuda.gridsize(1)
+    for i in range(idx, hist.shape[0], stride):
+        prob = hist[i] / total_pixels
         if prob != 0:
-            entropy_out[x] = -prob * math.log2(prob)
+            entropy_out[i] = -prob * math.log2(prob)
+@cuda.jit
+def sum_array(arr, result):
+    local_mem = cuda.shared.array(256, dtype=np.float32)
+
+    tid = cuda.threadIdx.x
+    bid = cuda.blockIdx.x
+    bdim = cuda.blockDim.x
+
+    i = bid * bdim + tid
+
+    local_mem[tid] = arr[i]
+    cuda.syncthreads()
+
+    s = bdim // 2
+    while s > 0:
+        if tid < s and i < arr.shape[0]:
+            local_mem[tid] += local_mem[tid + s]
+        cuda.syncthreads()
+        s //= 2
+
+    if tid == 0:
+        result[bid] = local_mem[0]
+
+    cuda.syncthreads()
 
 def entropy_with_cuda(data):
-    # Convert input data to numpy array
-    data_np = np.array(data)
 
-    counts = count_values_with_cuda(data)
-    # Determine unique values and their counts
-    #unique_values, counts = np.unique(data_np, return_counts=True)
+    total_pixels = len(data)
+    data_gpu = cuda.to_device(np.frombuffer(data, dtype=np.uint8))
 
-    # Total number of pixels
-    total_pixels = data_np.size
+    cuda.synchronize()
+    hist_host = np.zeros(256, dtype=np.uint32)
+    #hist_out = cuda.device_array(256, dtype=np.uint32)
+    # Initialize histogram array to zeros
+    #cuda.device_array_like(hist_out, fill_value=0)
+    
+    hist_out = cuda.to_device(hist_host)
+    cuda.synchronize()
+    threadsperblock_hist = 256
+    blockspergrid_hist = min((len(data) + (threadsperblock_hist - 1)) // threadsperblock_hist, 1024)
+    calculate_histogram[blockspergrid_hist, threadsperblock_hist](data_gpu, hist_out)
+       
 
-    # Compute histogram on GPU
-    hist_out = np.zeros_like(range(0,255))
-    threadsperblock = 256
-    blockspergrid = (data_np.size + (threadsperblock - 1)) // threadsperblock
-    calculate_histogram[blockspergrid, threadsperblock](data_np, hist_out)
+    del data_gpu
+    cuda.synchronize()
 
-    # Compute entropy on GPU
-    entropy_out = np.zeros_like(hist_out, dtype=np.float32)
-    threadsperblock = 256
-    blockspergrid = (hist_out.size + (threadsperblock - 1)) // threadsperblock
-    calculate_entropy[blockspergrid, threadsperblock](hist_out, total_pixels, entropy_out)
+    entropy_out_gpu = cuda.device_array(256, dtype=np.float32)
+    
 
-    # Sum the entropy values to get the total entropy
-    entropy = np.sum(entropy_out)
+    threadsperblock_entropy = 256
+    blockspergrid_entropy = min((hist_out.size + (threadsperblock_entropy - 1)) // threadsperblock_entropy, 1024)
+    calculate_entropy[blockspergrid_entropy, threadsperblock_entropy](hist_out, total_pixels, entropy_out_gpu)
 
-    return entropy
+    cuda.synchronize()
+    del hist_out
+
+    result = cuda.device_array(blockspergrid_entropy, dtype=np.float32)
+    
+    cuda.synchronize()
+
+    sum_array[blockspergrid_entropy, threadsperblock_entropy](entropy_out_gpu, result)
+
+
+    cuda.synchronize()
+    del entropy_out_gpu
+
+ 
+    entropy_sum = result.copy_to_host()
+
+    del result
+
+
+    cuda.synchronize()
+
+    return entropy_sum.sum()
+
+def is_supported_cuda():
+    return cuda.is_available() and cuda.detect()
