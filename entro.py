@@ -1,6 +1,11 @@
 import numpy as np
 from numba import cuda
+from numba.core.errors import NumbaPerformanceWarning
+import warnings
 import math
+
+warnings.simplefilter('ignore', category=NumbaPerformanceWarning)
+
 @cuda.jit
 def calculate_histogram(data, hist_out):
     # Initialize shared memory for local histogram
@@ -29,6 +34,9 @@ def calculate_entropy(hist, total_pixels, entropy_out):
         prob = hist[i] / total_pixels
         if prob != 0:
             entropy_out[i] = -prob * math.log2(prob)
+        else:
+            entropy_out[i] = -0.00001 * math.log2(0.00001)
+
 @cuda.jit
 def sum_array(arr, result):
     local_mem = cuda.shared.array(256, dtype=np.float32)
