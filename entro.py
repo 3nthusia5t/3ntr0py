@@ -10,6 +10,8 @@ warnings.simplefilter('ignore', category=NumbaPerformanceWarning)
 def calculate_histogram(data, hist_out):
     # Initialize shared memory for local histogram
     local_hist = cuda.shared.array(256, dtype=np.uint32)
+
+    #The Thread id is supposed to be from 0-256. (256 threads per block) 
     tx = cuda.threadIdx.x
 
     local_hist[tx] = 0
@@ -19,10 +21,11 @@ def calculate_histogram(data, hist_out):
     idx = cuda.grid(1)
     stride = cuda.gridsize(1)
     for i in range(idx, data.shape[0], stride):
+        #count 
         cuda.atomic.add(local_hist, data[i], 1)
     cuda.syncthreads()
 
-
+    #local_hist is shared memory, the other threads will handle other indexes. 
     cuda.atomic.add(hist_out, tx, local_hist[tx])
 
 
@@ -35,7 +38,7 @@ def calculate_entropy(hist, total_pixels, entropy_out):
         if prob != 0:
             entropy_out[i] = -prob * math.log2(prob)
         else:
-            entropy_out[i] = -0.00001 * math.log2(0.00001)
+            entropy_out[i] = -0.000001 * math.log2(0.000001)
 
 @cuda.jit
 def sum_array(arr, result):
@@ -110,7 +113,8 @@ def entropy_with_cuda(data):
 
 
     cuda.synchronize()
-
+    
+    #todo: remove sum() make it parrarel
     return entropy_sum.sum()
 
 def is_supported_cuda():
