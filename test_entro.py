@@ -4,9 +4,10 @@ import unittest
 import math
 from scipy.stats import entropy
 from numba.core.errors import NumbaPerformanceWarning
+import time
 
 # Functions to test
-from entro import calculate_histogram, calculate_entropy
+from entro import calculate_histogram, calculate_entropy, entropy_with_cuda
 
 class TestCalculateHistogram(unittest.TestCase):
     
@@ -89,6 +90,40 @@ class TestCalculateEntropy(unittest.TestCase):
             np.testing.assert_allclose(result, expected_entropy, rtol=1e-4, atol=1e-4, err_msg="Entropies do not match")
             del result
             del entropy_out_gpu
+
+
+class TestEntropyWithCUDA(unittest.TestCase):
+    def test_entropy_calculation(self):
+        # Test case for correctness of entropy calculation
+        for i in range(1, 100):
+            data = np.random.randint(0, 256, size=1000, dtype=np.uint8)
+            entropy_expected = self.calculate_entropy_numpy(data)
+            entropy_actual = entropy_with_cuda(data)
+            np.testing.assert_almost_equal(entropy_actual, entropy_expected, decimal=3)
+
+    def test_performance(self):
+        # Test case for performance
+        for i in range(0, 100):
+            data = np.random.randint(0, 256, size=10**6, dtype=np.uint8)
+            # Measure time for CUDA entropy calculation
+            start_time = time.time()
+            entropy_actual = entropy_with_cuda(data)
+            cuda_time = time.time() - start_time
+
+            # Measure time for NumPy entropy calculation
+            start_time = time.time()
+            entropy_expected = self.calculate_entropy_numpy(data)
+            numpy_time = time.time() - start_time
+
+            # CUDA needs to be at least twice as fast
+            np.testing.assert_almost_equal(entropy_actual, entropy_expected, decimal=3)
+            self.assertTrue(cuda_time*2 < numpy_time)
+
+    def calculate_entropy_numpy(self, data):
+        hist, _ = np.histogram(data, bins=256, range=[0, 256])
+        hist = hist / len(data)
+        entropy = -np.sum(hist * np.log2(hist + (hist == 0)))
+        return entropy
 
 
 if __name__ == '__main__':

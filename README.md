@@ -1,13 +1,13 @@
 ## Utilizing CUDA + Numba to calculate entropy.
 
-Around 10% faster than solution for single file and a lot faster for multiple files (up to 300 times faster on my equipment). 
+Normally entropy is calculated using the solution below. The Numba + CUDA solution is around 10% faster than this for single file and up to 300 times faster for multiple files  (on my equipment - NVIDIA 3060). 
 
 ```python
 
 from scipy.stats import entropy
 import numpy as np
 
-def entropy1(labels, base=None):
+def entropy(labels, base=None):
   labels = np.frombuffer(labels, dtype=np.uint8)
 
   value,counts = np.unique(labels, return_counts=True)
@@ -26,6 +26,11 @@ It took 10522.091444253922 seconds to complete the processing of all 200k malwar
 
 The malware was stored on network attached storage, which has greatly impacted the I/O performance. 
 
+
+## Testing
+
+Currently, tests cannot be performed on the Github actions as there is no Nvidia GPU available.
+If it will be possible, I will create a self-hosted runner in the future.
 
 ## Remarks
 
