@@ -8,6 +8,7 @@ import time
 
 # Functions to test
 from entro import calculate_histogram, calculate_entropy, entropy_with_cuda
+from other import hamming_distance, find_strings
 
 class TestCalculateHistogram(unittest.TestCase):
     
@@ -124,6 +125,35 @@ class TestEntropyWithCUDA(unittest.TestCase):
         hist = hist / len(data)
         entropy = -np.sum(hist * np.log2(hist + (hist == 0)))
         return entropy
+    
+
+class TestHammingDistance(unittest.TestCase):
+    def test_equal_arrays(self):
+        src = np.array([1, 2, 3, 4, 5])
+        dst = np.array([1, 2, 3, 0, 0])
+        result = np.zeros_like(src)  # Initialize result array with zeros of the same shape as src
+        hamming_distance[1,5](src, dst, result)
+        hamdis = result.sum()
+        self.assertTrue(hamdis == 3 , "Hamming distance between identical array")
+
+class TestFindStrings(unittest.TestCase):
+    def test_single_string(self):
+        src_single_string = np.array([72, 101, 108, 108, 111, 0,0,0,0,0,0,0,0,0], dtype=np.uint8)
+        binary_data = None
+        with open("senddmp.exe", "rb") as file:
+            # Read the binary data
+            binary_data = file.read()
+            binary_data = binary_data[:10000]  
+        numpy_array = np.frombuffer(binary_data, dtype=np.uint8)
+        arr_2d_empty = np.empty((numpy_array.size, numpy_array.size), dtype=np.uint8)
+        result = np.zeros_like(arr_2d_empty, dtype=np.uint8)
+
+        threadsperblock = 1024
+        blockspergrid_hist = min((len(binary_data) + (threadsperblock - 1)) // threadsperblock, 1024)
+        find_strings[1,1](numpy_array, result)
+        for item in result:
+            print(item)
+
 
 
 if __name__ == '__main__':

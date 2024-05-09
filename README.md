@@ -21,11 +21,11 @@ Still in development
 ## Goal
 
 Quickly calculate entropy of over 200k (110 GB) malware samples without using any CPU multiprocessing. 
-
 It took 10522.091444253922 seconds to complete the processing of all 200k malware samples (110GB). 
+The malware was stored on a network attached storage, which has greatly impacted the I/O performance. 
 
-The malware was stored on network attached storage, which has greatly impacted the I/O performance. 
-
+By applying CPU multiprocessing I was able to maximize usage of my computer resources and process the 110 GB in around 3600 seconds (1 hour).
+The data was stored on the network attached storage.
 
 ## Testing
 

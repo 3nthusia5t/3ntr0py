@@ -6,6 +6,7 @@ import math
 
 warnings.simplefilter('ignore', category=NumbaPerformanceWarning)
 
+
 @cuda.jit
 def calculate_histogram(data, hist_out):
     # Initialize shared memory for local histogram
