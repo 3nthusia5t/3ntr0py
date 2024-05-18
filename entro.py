@@ -69,6 +69,10 @@ def sum_array(arr, result):
 
 
 def entropy_with_cuda(data):
+    # The entropy value for empty set is 0. 
+    # However, the main goal of the function is to calculate file entropy, so raising an exception is more practical in this case.
+    if not data:
+        raise ValueError('The list is empty and cannot be processed.')
     
     data_size = len(data)
     data_gpu = cuda.to_device(np.frombuffer(data, dtype=np.uint8))
